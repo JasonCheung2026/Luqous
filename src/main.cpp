@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <ArduinoJson.h>
 #include <U8g2lib.h>
+#include "csv_logger.h"
 
 // =============================================================================
 // Network configuration
@@ -394,12 +395,14 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Payload: ");
   Serial.println(message);
   Serial.println("-----------------------------");
+
+  csvLoggerHandleCommand(message);
 }
 
 static void mqttInit() {
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
-  mqttClient.setBufferSize(512);
+  mqttClient.setBufferSize(1024);
 }
 
 static void mqttMaintain() {
@@ -454,13 +457,13 @@ static void maintainRelayButton() {
     if (reading == LOW && !relay_state) {
       relay_state = true;
       digitalWrite(RELAY_PIN, HIGH); // Output constant 3.3V
-      Serial.println("Relay State: ON (3.3V output)");
+      Serial.println("Fill Light: ON");
       delay(250); // Guard to prevent rapid re-triggering from a single press
     } 
     else if (reading == LOW && relay_state) {
       relay_state = false;
       digitalWrite(RELAY_PIN, LOW);  // Output 0V
-      Serial.println("Relay State: OFF (0V output)");
+      Serial.println("Fill Light: OFF");
       delay(250); // Guard to prevent rapid re-triggering from a single press
     }
   }
@@ -543,13 +546,16 @@ static void publishTelemetry(unsigned long timestampMs,
                              float temperature,
                              float humidity,
                              uint16_t lux,
-                             uint16_t waterRaw) {
-  DynamicJsonDocument doc(256);
+                             uint16_t waterRaw,
+                             bool fillLightOn) {
+  DynamicJsonDocument doc(384);
   doc["timestamp"]   = timestampMs;
+  doc["datetime"]    = csvLoggerFormatTimestamp();
   doc["temperature"] = temperature;
   doc["humidity"]    = humidity;
   doc["lux"]         = lux;
   doc["water_raw"]   = waterRaw;
+  doc["fill_light"]  = csvLoggerFillLightLabel(fillLightOn);
   doc["device"]      = "ESP32S3";
 
   String payload;
@@ -603,7 +609,12 @@ static void collectAndPublishTelemetry() {
   latest_water_raw = waterRaw;
   yield();
 
-  publishTelemetry(now, latest_temperature, latest_humidity, latest_lux, latest_water_raw);
+  publishTelemetry(now, latest_temperature, latest_humidity, latest_lux, latest_water_raw,
+                   relay_state);
+
+  csvLoggerRecordReading(latest_temperature, latest_humidity, latest_lux, latest_water_raw,
+                         relay_state);
+
   Serial.println("--- End telemetry cycle ---");
 }
 
@@ -640,6 +651,7 @@ void setup() {
   waterLevelInit();
   wifiInit();
   mqttInit();
+  csvLoggerInit(&mqttClient);
 
   // Perform a rapid initial sensor reading to populate cached states 
   // so the OLED does not display empty "--" values on bootup.
@@ -667,6 +679,8 @@ void setup() {
 
 void loop() {
   wifiMaintain();
+  csvLoggerMaintainTime(wifiIsConnected());
+  csvLoggerMaintainStorage();
   mqttMaintain();
   mqttClient.loop();
 
