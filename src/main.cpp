@@ -23,6 +23,9 @@ static const uint8_t I2C_SCL_PIN      = 9;
 static const uint8_t WATER_ADC_PIN    = 1;   // ADC1 channel 0
 static const uint8_t WATER_POWER_PIN  = 4;   // sensor VCC enable (active HIGH)
 
+static const uint8_t BUTTON_PIN      = 5;   // Pushbutton pin (active LOW with internal pull-up)
+static const uint8_t RELAY_PIN       = 6;   // Relay control output pin (constant 3.3V / 0V)
+
 static const uint8_t BH1750_ADDRESS   = 0x23;
 static const uint8_t DHTC12_ADDRESS   = 0x44;
 static const uint8_t OLED_ADDRESS     = 0x3C; // Standard 7-bit I2C address for SSD1306/SH1106
@@ -35,6 +38,7 @@ static const uint32_t DISPLAY_INTERVAL_MS   = 2000; // Update display every 2 se
 static const uint32_t WIFI_RETRY_MS         = 5000;
 static const uint32_t MQTT_RETRY_MS         = 5000;
 static const uint8_t  WATER_SAMPLE_COUNT    = 8;
+static const unsigned long DEBOUNCE_DELAY_MS = 50;   // Debounce time for physical button
 
 // =============================================================================
 // Global state
@@ -49,6 +53,11 @@ bool     oled_present    = false;
 
 uint16_t dhtc12_hum_a    = 0;
 uint16_t dhtc12_hum_b    = 0;
+
+// Relay and Button states
+bool          relay_state        = false;  // False = 0V, True = 3.3V
+bool          last_button_state  = HIGH;   // Starts HIGH due to internal pull-up
+unsigned long last_debounce_time = 0;
 
 // Cached sensor readings for non-blocking asynchronous display updates
 float    latest_temperature = 0.0f;
@@ -422,6 +431,44 @@ static void mqttMaintain() {
 }
 
 // =============================================================================
+// Button & Relay Driver
+// =============================================================================
+static void relayButtonInit() {
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW); // Start with 0V on the relay pin
+  Serial.printf("Relay & Button: Button Pin GPIO%u, Relay Pin GPIO%u\n", BUTTON_PIN, RELAY_PIN);
+}
+
+static void maintainRelayButton() {
+  int reading = digitalRead(BUTTON_PIN);
+  const unsigned long now = millis();
+
+  // If the physical state of the switch changed
+  if (reading != last_button_state) {
+    last_debounce_time = now;
+  }
+
+  if ((now - last_debounce_time) > DEBOUNCE_DELAY_MS) {
+    // If the button is pressed (LOW due to INPUT_PULLUP)
+    if (reading == LOW && !relay_state) {
+      relay_state = true;
+      digitalWrite(RELAY_PIN, HIGH); // Output constant 3.3V
+      Serial.println("Relay State: ON (3.3V output)");
+      delay(250); // Guard to prevent rapid re-triggering from a single press
+    } 
+    else if (reading == LOW && relay_state) {
+      relay_state = false;
+      digitalWrite(RELAY_PIN, LOW);  // Output 0V
+      Serial.println("Relay State: OFF (0V output)");
+      delay(250); // Guard to prevent rapid re-triggering from a single press
+    }
+  }
+
+  last_button_state = reading;
+}
+
+// =============================================================================
 // OLED — Display management helper
 // =============================================================================
 static bool oledProbeAddress() {
@@ -589,6 +636,7 @@ void setup() {
     Serial.println("OLED: Display driver initialized");
   }
 
+  relayButtonInit(); // Initialize the Relay and Button GPIO setup
   waterLevelInit();
   wifiInit();
   mqttInit();
@@ -621,6 +669,8 @@ void loop() {
   wifiMaintain();
   mqttMaintain();
   mqttClient.loop();
+
+  maintainRelayButton(); // Continuously monitor and switch the relay based on the button
   yield();
 
   const unsigned long now = millis();
