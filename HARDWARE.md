@@ -12,14 +12,13 @@ All I2C devices share one bus.
 
 | Signal | ESP32-S3 GPIO | Devices |
 |--------|---------------|---------|
-| **SDA** | **GPIO 8** | OLED, BH1750 (light), DHTC12 (temp/humidity) |
-| **SCL** | **GPIO 9** | OLED, BH1750, DHTC12 |
+| **SDA** | **GPIO 8** | OLED, BH1750 (light) |
+| **SCL** | **GPIO 9** | OLED, BH1750 |
 
 | Device | I2C address | Function |
 |--------|-------------|----------|
 | OLED (SH1106, 128×64) | 0x3C | Status display |
 | BH1750 | 0x23 | Ambient light (lux) |
-| DHTC12 | 0x44 | Temperature & humidity |
 
 **Wiring:** Device SDA → GPIO 8, SCL → GPIO 9, GND → GND, VCC → 3.3V (per module specs).
 
@@ -27,7 +26,19 @@ All I2C devices share one bus.
 
 ---
 
-## 2. Water level sensor
+## 2. DHT11 (temperature & humidity)
+
+| DHT11 pin | ESP32-S3 | Notes |
+|-----------|----------|-------|
+| **+** | **3.3V** | Power |
+| **−** | **GND** | Ground |
+| **OUT** | **GPIO 2** | Data line (single-wire) |
+
+**Pull-ups:** Use the **on-board 10 kΩ** on most DHT11 modules. Bare sensors need 10 kΩ from OUT to 3.3V.
+
+---
+
+## 3. Water level sensor
 
 | Signal | ESP32-S3 GPIO | Notes |
 |--------|---------------|-------|
@@ -40,7 +51,7 @@ All I2C devices share one bus.
 
 ---
 
-## 3. Fill Light (relay + button)
+## 4. Fill Light (relay + button)
 
 | Signal | ESP32-S3 GPIO | Notes |
 |--------|---------------|-------|
@@ -53,7 +64,7 @@ All I2C devices share one bus.
 
 ---
 
-## 4. Micro SD card module (SPI)
+## 5. Micro SD card module (SPI)
 
 Connect by **pin label**, not header position.
 
@@ -72,7 +83,7 @@ Connect by **pin label**, not header position.
 
 ---
 
-## 5. Power & ground
+## 6. Power & ground
 
 | Connection | Notes |
 |------------|--------|
@@ -83,14 +94,15 @@ Connect by **pin label**, not header position.
 
 ---
 
-## 6. Pin map (quick reference)
+## 7. Pin map (quick reference)
 
 ```
 GPIO 1  — Water level ADC
+GPIO 2  — DHT11 data (OUT)
 GPIO 4  — Water sensor power enable
 GPIO 5  — Fill Light button (internal pull-up)
 GPIO 6  — Fill Light relay
-GPIO 8  — I2C SDA (OLED, BH1750, DHTC12)
+GPIO 8  — I2C SDA (OLED, BH1750)
 GPIO 9  — I2C SCL
 GPIO 10 — SD CS (+ 10k to 3.3V)
 GPIO 11 — SD MOSI
@@ -100,11 +112,12 @@ GPIO 13 — SD MISO
 
 ---
 
-## 7. Pull-up summary
+## 8. Pull-up summary
 
 | Interface | External pull-up? | Detail |
 |-----------|-------------------|--------|
-| I2C (OLED, BH1750, DHTC12) | **No** | — |
+| I2C (OLED, BH1750) | **No** | — |
+| DHT11 data | **Module dependent** | On-board 10 kΩ on most modules |
 | Water level | **No** | — |
 | Fill Light button | **No** (external) | Internal pull-up on GPIO 5 |
 | Fill Light relay | **No** | Output only |

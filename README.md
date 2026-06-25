@@ -4,7 +4,7 @@ Firmware for an ESP32-S3 DevKitC-1 that reads environmental sensors, controls a 
 
 ## Features
 
-- **DHTC12** — temperature and humidity (I2C)
+- **DHT11** — temperature and humidity (GPIO 2, single-wire)
 - **BH1750** — ambient light (lux)
 - **Water level** — analog sensor with anti-corrosion power gating
 - **Fill Light** — pushbutton toggles a relay (logged as `ON` / `OFF`)
@@ -21,7 +21,7 @@ Sensor data is collected and logged every **5 seconds**.
 
 | Device | SDA | SCL | Address |
 |--------|-----|-----|---------|
-| OLED, BH1750, DHTC12 | GPIO 8 | GPIO 9 | 0x3C, 0x23, 0x44 |
+| OLED, BH1750 | GPIO 8 | GPIO 9 | 0x3C, 0x23 |
 
 ### Other GPIO
 
@@ -175,7 +175,7 @@ platformio.ini
 
 | Symptom | Things to check |
 |---------|-----------------|
-| `DHTC12: not present` | I2C wiring (GPIO 8/9), sensor power, address 0x44 |
+| `DHT11: read failed` | Check GPIO 2 wiring, 3.3V power, data pull-up |
 | `MQTT publish skipped` | Wi-Fi / hotspot, broker IP, broker running |
 | `datetime: NOT_SYNCED` | Wi-Fi must be up for NTP |
 | SD init fails | 3.3V power, MISO/MOSI not swapped, FAT32, firm card seat |
