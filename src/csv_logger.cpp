@@ -14,7 +14,8 @@ static const char* const NTP_SERVER_1 = "pool.ntp.org";
 static const char* const NTP_SERVER_2 = "time.nist.gov";
 
 static const char* const CSV_HEADER =
-    "datetime,temperature_c,humidity_pct,lux,water_raw,fill_light";
+    "datetime,temperature_c,humidity_pct,lux,water_raw,fill_light,"
+    "soil_moisture_pct,soil_temp_c,soil_ec_us_cm";
 
 static PubSubClient* g_mqttClient = nullptr;
 static bool          g_timeConfigured = false;
@@ -332,9 +333,12 @@ static String buildCsvRow(float temperatureC,
                           float humidityPct,
                           uint16_t lux,
                           uint16_t waterRaw,
-                          bool fillLightOn) {
+                          bool fillLightOn,
+                          float soilMoisturePct,
+                          float soilTempC,
+                          uint16_t soilEcUsCm) {
   String row;
-  row.reserve(96);
+  row.reserve(128);
   row += csvLoggerFormatTimestamp();
   row += ',';
   row += String(temperatureC, 2);
@@ -346,6 +350,12 @@ static String buildCsvRow(float temperatureC,
   row += String(waterRaw);
   row += ',';
   row += csvLoggerFillLightLabel(fillLightOn);
+  row += ',';
+  row += String(soilMoisturePct, 1);
+  row += ',';
+  row += String(soilTempC, 1);
+  row += ',';
+  row += String(soilEcUsCm);
   return row;
 }
 
@@ -376,8 +386,12 @@ bool csvLoggerRecordReading(float temperatureC,
                             float humidityPct,
                             uint16_t lux,
                             uint16_t waterRaw,
-                            bool fillLightOn) {
-  const String row = buildCsvRow(temperatureC, humidityPct, lux, waterRaw, fillLightOn);
+                            bool fillLightOn,
+                            float soilMoisturePct,
+                            float soilTempC,
+                            uint16_t soilEcUsCm) {
+  const String row = buildCsvRow(temperatureC, humidityPct, lux, waterRaw, fillLightOn,
+                                 soilMoisturePct, soilTempC, soilEcUsCm);
 
   const bool ok = appendCsvRow(row);
   publishCsvRow(row);

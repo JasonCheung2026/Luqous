@@ -6,6 +6,7 @@
 #include <U8g2lib.h>
 #include <DHT.h>
 #include "csv_logger.h"
+#include "soil_sensor.h"
 
 // =============================================================================
 // Network configuration
@@ -65,6 +66,10 @@ float    latest_temperature = 0.0f;
 float    latest_humidity    = 0.0f;
 uint16_t latest_lux         = 0;
 uint16_t latest_water_raw   = 0;
+float    latest_soil_moisture = 0.0f;
+float    latest_soil_temp     = 0.0f;
+uint16_t latest_soil_ec       = 0;
+bool     latest_soil_valid    = false;
 bool     latest_data_valid  = false;
 
 unsigned long last_telemetry_ms      = 0;
@@ -357,11 +362,18 @@ static void updateDisplay() {
     return;
   }
 
+  static bool showSoilPage = false;
+  if (soilSensorPresent()) {
+    showSoilPage = !showSoilPage;
+  } else {
+    showSoilPage = false;
+  }
+
   u8g2.clearBuffer();
 
   // 1. Draw top status bar
   u8g2.setFont(u8g2_font_5x8_tf);
-  u8g2.drawStr(0, 8, "ESP32-S3 NODE");
+  u8g2.drawStr(0, 8, showSoilPage ? "ESP32-S3 SOIL" : "ESP32-S3 NODE");
 
   // Format connection status indicators
   String wifiStr = wifiIsConnected() ? "W:OK" : "W:--";
@@ -378,33 +390,59 @@ static void updateDisplay() {
   u8g2.setFont(u8g2_font_6x10_tf);
   char buf[32];
 
-  // Row 1: Temperature
-  if (dht11_present && latest_data_valid) {
-    snprintf(buf, sizeof(buf), "Temp:  %.2f C", latest_temperature);
-  } else {
-    snprintf(buf, sizeof(buf), "Temp:  --");
-  }
-  u8g2.drawStr(0, 24, buf);
+  if (showSoilPage) {
+    if (latest_soil_valid) {
+      snprintf(buf, sizeof(buf), "Moist: %.1f %%", latest_soil_moisture);
+    } else {
+      snprintf(buf, sizeof(buf), "Moist: --");
+    }
+    u8g2.drawStr(0, 24, buf);
 
-  // Row 2: Humidity
-  if (dht11_present && latest_data_valid) {
-    snprintf(buf, sizeof(buf), "Humid: %.2f %%", latest_humidity);
-  } else {
-    snprintf(buf, sizeof(buf), "Humid: --");
-  }
-  u8g2.drawStr(0, 37, buf);
+    if (latest_soil_valid) {
+      snprintf(buf, sizeof(buf), "STemp: %.1f C", latest_soil_temp);
+    } else {
+      snprintf(buf, sizeof(buf), "STemp: --");
+    }
+    u8g2.drawStr(0, 37, buf);
 
-  // Row 3: Light
-  if (bh1750_present) {
-    snprintf(buf, sizeof(buf), "Light: %u Lux", latest_lux);
-  } else {
-    snprintf(buf, sizeof(buf), "Light: --");
-  }
-  u8g2.drawStr(0, 50, buf);
+    if (latest_soil_valid) {
+      snprintf(buf, sizeof(buf), "EC:    %u uS/cm", latest_soil_ec);
+    } else {
+      snprintf(buf, sizeof(buf), "EC:    --");
+    }
+    u8g2.drawStr(0, 50, buf);
 
-  // Row 4: Water Level (Raw)
-  snprintf(buf, sizeof(buf), "Water: %u", latest_water_raw);
-  u8g2.drawStr(0, 63, buf);
+    snprintf(buf, sizeof(buf), "Water: %u", latest_water_raw);
+    u8g2.drawStr(0, 63, buf);
+  } else {
+    // Row 1: Temperature
+    if (dht11_present && latest_data_valid) {
+      snprintf(buf, sizeof(buf), "Temp:  %.2f C", latest_temperature);
+    } else {
+      snprintf(buf, sizeof(buf), "Temp:  --");
+    }
+    u8g2.drawStr(0, 24, buf);
+
+    // Row 2: Humidity
+    if (dht11_present && latest_data_valid) {
+      snprintf(buf, sizeof(buf), "Humid: %.2f %%", latest_humidity);
+    } else {
+      snprintf(buf, sizeof(buf), "Humid: --");
+    }
+    u8g2.drawStr(0, 37, buf);
+
+    // Row 3: Light
+    if (bh1750_present) {
+      snprintf(buf, sizeof(buf), "Light: %u Lux", latest_lux);
+    } else {
+      snprintf(buf, sizeof(buf), "Light: --");
+    }
+    u8g2.drawStr(0, 50, buf);
+
+    // Row 4: Water Level (Raw)
+    snprintf(buf, sizeof(buf), "Water: %u", latest_water_raw);
+    u8g2.drawStr(0, 63, buf);
+  }
 
   u8g2.sendBuffer();
 }
@@ -417,8 +455,11 @@ static void publishTelemetry(unsigned long timestampMs,
                              float humidity,
                              uint16_t lux,
                              uint16_t waterRaw,
-                             bool fillLightOn) {
-  DynamicJsonDocument doc(384);
+                             bool fillLightOn,
+                             float soilMoisturePct,
+                             float soilTempC,
+                             uint16_t soilEcUsCm) {
+  DynamicJsonDocument doc(512);
   doc["timestamp"]   = timestampMs;
   doc["datetime"]    = csvLoggerFormatTimestamp();
   doc["temperature"] = temperature;
@@ -426,6 +467,9 @@ static void publishTelemetry(unsigned long timestampMs,
   doc["lux"]         = lux;
   doc["water_raw"]   = waterRaw;
   doc["fill_light"]  = csvLoggerFillLightLabel(fillLightOn);
+  doc["soil_moisture_pct"] = soilMoisturePct;
+  doc["soil_temp_c"]       = soilTempC;
+  doc["soil_ec_us_cm"]     = soilEcUsCm;
   doc["device"]      = "ESP32S3";
 
   String payload;
@@ -477,11 +521,23 @@ static void collectAndPublishTelemetry() {
   latest_water_raw = waterRaw;
   yield();
 
+  SoilSensorReading soil;
+  if (soilSensorShouldRead() && soilSensorRead(&soil) && soil.valid) {
+    latest_soil_moisture = soil.moisturePct;
+    latest_soil_temp     = soil.temperatureC;
+    latest_soil_ec       = soil.ecUsCm;
+    latest_soil_valid    = true;
+  } else if (soilSensorPresent()) {
+    latest_soil_valid = false;
+    Serial.println("Soil sensor: read failed");
+  }
+  yield();
+
   publishTelemetry(now, latest_temperature, latest_humidity, latest_lux, latest_water_raw,
-                   relay_state);
+                   relay_state, latest_soil_moisture, latest_soil_temp, latest_soil_ec);
 
   csvLoggerRecordReading(latest_temperature, latest_humidity, latest_lux, latest_water_raw,
-                         relay_state);
+                         relay_state, latest_soil_moisture, latest_soil_temp, latest_soil_ec);
 
   Serial.println("--- End telemetry cycle ---");
 }
@@ -515,6 +571,7 @@ void setup() {
 
   relayButtonInit(); // Initialize the Relay and Button GPIO setup
   waterLevelInit();
+  soilSensorInit();
   wifiInit();
   mqttInit();
   csvLoggerInit(&mqttClient);
@@ -533,6 +590,15 @@ void setup() {
     latest_lux = bh1750ReadLux();
   }
   latest_water_raw = waterLevelReadRaw();
+  if (soilSensorPresent()) {
+    SoilSensorReading soil;
+    if (soilSensorRead(&soil) && soil.valid) {
+      latest_soil_moisture = soil.moisturePct;
+      latest_soil_temp     = soil.temperatureC;
+      latest_soil_ec       = soil.ecUsCm;
+      latest_soil_valid    = true;
+    }
+  }
 
   // Initial render immediately after cache is populated
   updateDisplay();

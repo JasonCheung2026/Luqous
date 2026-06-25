@@ -83,18 +83,50 @@ Connect by **pin label**, not header position.
 
 ---
 
-## 6. Power & ground
+## 6. Soil sensor (SN-3000-ECTH-N01) via RS485
+
+**Sensor:** SN-3000-ECTH-N01 (Modbus RTU, 4800 baud, address 1)  
+**Converter:** HW-097 (MAX485)
+
+### Soil sensor wires
+
+| Wire color | Function | Connect to |
+|------------|----------|------------|
+| **Brown** | Power + | **24V DC** (4.5–30V) |
+| **Black** | GND | **Common ground** |
+| **Yellow** | RS485 A | HW-097 **A** |
+| **Blue** | RS485 B | HW-097 **B** |
+
+### HW-097 (MAX485) to ESP32-S3
+
+| HW-097 pin | ESP32-S3 | Notes |
+|------------|----------|-------|
+| **VCC** | **3.3V** | Logic supply |
+| **GND** | **GND** | Common ground |
+| **DI** | **GPIO 17** | UART TX |
+| **RO** | **GPIO 18** | UART RX |
+| **DE** | **GPIO 7** | Tie **DE + RE** together |
+| **RE** | **GPIO 7** | Same pin as DE |
+| **A** | Sensor **Yellow** | Swap A/B if no response |
+| **B** | Sensor **Blue** | |
+
+**Pull-ups:** None on RS485 lines.
+
+---
+
+## 7. Power & ground
 
 | Connection | Notes |
 |------------|--------|
 | **ESP32-S3** | USB or regulated 5V/3.3V per DevKit |
+| **Soil sensor** | **24V DC** on Brown (Black → common GND) |
 | **All modules** | Share **GND** with the ESP32 |
 | **Logic level** | **3.3V** for I2C sensors, SD module, and relay control |
 | **SD module** | Optional: 100 µF + 0.1 µF across VCC–GND for stable writes |
 
 ---
 
-## 7. Pin map (quick reference)
+## 8. Pin map (quick reference)
 
 ```
 GPIO 1  — Water level ADC
@@ -102,17 +134,20 @@ GPIO 2  — DHT11 data (OUT)
 GPIO 4  — Water sensor power enable
 GPIO 5  — Fill Light button (internal pull-up)
 GPIO 6  — Fill Light relay
+GPIO 7  — RS485 DE/RE (MAX485)
 GPIO 8  — I2C SDA (OLED, BH1750)
 GPIO 9  — I2C SCL
 GPIO 10 — SD CS (+ 10k to 3.3V)
 GPIO 11 — SD MOSI
 GPIO 12 — SD SCK
 GPIO 13 — SD MISO
+GPIO 17 — UART1 TX → MAX485 DI
+GPIO 18 — UART1 RX ← MAX485 RO
 ```
 
 ---
 
-## 8. Pull-up summary
+## 9. Pull-up summary
 
 | Interface | External pull-up? | Detail |
 |-----------|-------------------|--------|
@@ -123,3 +158,4 @@ GPIO 13 — SD MISO
 | Fill Light relay | **No** | Output only |
 | SD card **CS** | **Yes** | **10 kΩ to 3.3V** |
 | SD MISO / MOSI / SCK | **No** | — |
+| RS485 (soil sensor) | **No** | — |

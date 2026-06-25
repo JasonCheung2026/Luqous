@@ -6,6 +6,7 @@ Firmware for an ESP32-S3 DevKitC-1 that reads environmental sensors, controls a 
 
 - **DHT11** — temperature and humidity (GPIO 2, single-wire)
 - **BH1750** — ambient light (lux)
+- **SN-3000 soil sensor** — moisture, soil temperature, EC over RS485 Modbus
 - **Water level** — analog sensor with anti-corrosion power gating
 - **Fill Light** — pushbutton toggles a relay (logged as `ON` / `OFF`)
 - **OLED** — 128×64 SH1106 status display (I2C)
@@ -27,10 +28,16 @@ Sensor data is collected and logged every **5 seconds**.
 
 | Function | GPIO |
 |----------|------|
+| DHT11 data | 2 |
 | Water level ADC | 1 |
 | Water sensor power (active HIGH) | 4 |
 | Fill Light button (active LOW, pull-up) | 5 |
 | Fill Light relay | 6 |
+| RS485 DE/RE (MAX485) | 7 |
+| UART1 TX → MAX485 DI | 17 |
+| UART1 RX ← MAX485 RO | 18 |
+
+See [HARDWARE.md](HARDWARE.md) for full wiring (soil sensor 24V power, A/B lines, common ground).
 
 ### Micro SD card (SPI)
 
@@ -82,6 +89,9 @@ The ESP32 must reach an MQTT broker (e.g. Mosquitto on your Mac while the hotspo
   "lux": 218,
   "water_raw": 0,
   "fill_light": "OFF",
+  "soil_moisture_pct": 32.5,
+  "soil_temp_c": 22.1,
+  "soil_ec_us_cm": 850,
   "device": "ESP32S3"
 }
 ```
@@ -105,9 +115,11 @@ Responses on `esp32/log/download`:
 File on SD card: **`sensor_log.csv`**
 
 ```csv
-datetime,temperature_c,humidity_pct,lux,water_raw,fill_light
-2026-06-15 15:35:29,0.00,0.00,218,0,OFF
+datetime,temperature_c,humidity_pct,lux,water_raw,fill_light,soil_moisture_pct,soil_temp_c,soil_ec_us_cm
+2026-06-15 15:35:29,0.00,0.00,218,0,OFF,32.5,22.1,850
 ```
+
+If you already have an older `sensor_log.csv` on the SD card, delete it (or rename it) so a new file is created with the updated header.
 
 Storage is **SD card only** (no internal flash fallback).
 
@@ -163,6 +175,8 @@ CSV logger: recorded row -> 2026-06-15 15:35:29,0.00,0.00,218,0,OFF
 ```
 src/
   main.cpp          # sensors, Wi-Fi, MQTT, OLED, relay
+  soil_sensor.cpp   # SN-3000 Modbus RTU over RS485
+  soil_sensor.h
   csv_logger.cpp    # NTP, SD CSV logging, MQTT log download
   csv_logger.h      # SD pin config
 scripts/
@@ -176,6 +190,8 @@ platformio.ini
 | Symptom | Things to check |
 |---------|-----------------|
 | `DHT11: read failed` | Check GPIO 2 wiring, 3.3V power, data pull-up |
+| `Soil sensor: Modbus timeout` | 24V on Brown wire, common GND, DE+RE → GPIO 7, swap A/B |
+| `Soil sensor: CRC mismatch` | Loose RS485 wiring, wrong baud (default 4800), wrong address |
 | `MQTT publish skipped` | Wi-Fi / hotspot, broker IP, broker running |
 | `datetime: NOT_SYNCED` | Wi-Fi must be up for NTP |
 | SD init fails | 3.3V power, MISO/MOSI not swapped, FAT32, firm card seat |
