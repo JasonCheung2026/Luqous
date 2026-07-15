@@ -11,9 +11,24 @@
 // =============================================================================
 // Network configuration
 // =============================================================================
-static const char* WIFI_SSID       = "JasonCheung";
-static const char* WIFI_PASSWORD   = "51160779";
-static const char* MQTT_BROKER     = "172.20.10.3";
+// 0 = personal WPA2 (phone hotspot / home router)
+// 1 = WPA2-Enterprise PEAP (CUHK1x / eduroam)
+#ifndef WIFI_USE_ENTERPRISE
+#define WIFI_USE_ENTERPRISE 1
+#endif
+
+#if WIFI_USE_ENTERPRISE
+// Campus Wi-Fi — fill in your CUHK email + OnePass password below.
+static const char* WIFI_SSID     = "CUHK1x";  // or "eduroam"
+static const char* EAP_IDENTITY  = "YOUR_ID@link.cuhk.edu.hk";  // student or staff email
+static const char* EAP_USERNAME  = "YOUR_ID@link.cuhk.edu.hk";  // usually same as identity
+static const char* EAP_PASSWORD  = "";  // <<< FILL IN: your OnePass password
+#else
+static const char* WIFI_SSID     = "YOUR_HOTSPOT_SSID";
+static const char* WIFI_PASSWORD = "YOUR_HOTSPOT_PASSWORD";
+#endif
+
+static const char* MQTT_BROKER     = "10.13.152.3";  // MQTT broker IP on your LAN
 static const uint16_t MQTT_PORT    = 1883;
 static const char* TOPIC_PUBLISH   = "esp32/telemetry";
 static const char* TOPIC_SUBSCRIBE = "esp32/commands";
@@ -38,7 +53,11 @@ static const uint8_t OLED_ADDRESS     = 0x3C; // Standard 7-bit I2C address for 
 // =============================================================================
 static const uint32_t TELEMETRY_INTERVAL_MS = 5000;
 static const uint32_t DISPLAY_INTERVAL_MS   = 2000; // Update display every 2 seconds
+#if WIFI_USE_ENTERPRISE
+static const uint32_t WIFI_RETRY_MS         = 15000; // enterprise auth can be slow
+#else
 static const uint32_t WIFI_RETRY_MS         = 5000;
+#endif
 static const uint32_t MQTT_RETRY_MS         = 5000;
 static const uint8_t  WATER_SAMPLE_COUNT    = 8;
 static const unsigned long DEBOUNCE_DELAY_MS = 50;   // Debounce time for physical button
@@ -222,14 +241,45 @@ static uint16_t waterLevelReadRaw() {
 }
 
 // =============================================================================
-// Wi-Fi — non-blocking reconnect
+// Wi-Fi — non-blocking reconnect (personal WPA2 or campus WPA2-Enterprise)
 // =============================================================================
-static void wifiInit() {
+static bool wifiCredentialsReady() {
+#if WIFI_USE_ENTERPRISE
+  if (EAP_PASSWORD == nullptr || EAP_PASSWORD[0] == '\0') {
+    Serial.println("Wi-Fi: EAP_PASSWORD is empty — fill in your OnePass in main.cpp");
+    return false;
+  }
+  if (strstr(EAP_IDENTITY, "YOUR_ID") != nullptr) {
+    Serial.println("Wi-Fi: replace YOUR_ID in EAP_IDENTITY / EAP_USERNAME with your CUHK email");
+    return false;
+  }
+#endif
+  return true;
+}
+
+static void wifiBeginConnection() {
+  if (!wifiCredentialsReady()) {
+    return;
+  }
+
   WiFi.mode(WIFI_STA);
+  WiFi.disconnect(true);
+  delay(100);
+
+#if WIFI_USE_ENTERPRISE
+  // CUHK1x / eduroam: PEAP + MSCHAPv2 (identity + OnePass)
+  Serial.printf("Wi-Fi: connecting to %s (WPA2-Enterprise PEAP, id=%s)\n",
+                WIFI_SSID, EAP_IDENTITY);
+  WiFi.begin(WIFI_SSID, WPA2_AUTH_PEAP, EAP_IDENTITY, EAP_USERNAME, EAP_PASSWORD);
+#else
+  Serial.printf("Wi-Fi: connecting to %s (WPA2-Personal)\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+#endif
+}
+
+static void wifiInit() {
   last_wifi_retry_ms = millis();
-  Serial.print("Wi-Fi: connecting to ");
-  Serial.println(WIFI_SSID);
+  wifiBeginConnection();
 }
 
 static void wifiMaintain() {
@@ -244,8 +294,7 @@ static void wifiMaintain() {
   last_wifi_retry_ms = now;
 
   Serial.println("Wi-Fi: disconnected, retrying...");
-  WiFi.disconnect();
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  wifiBeginConnection();
 }
 
 static bool wifiIsConnected() {

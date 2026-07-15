@@ -58,16 +58,38 @@ SD settings are in `src/csv_logger.h` (`USE_SD_CARD`, pin defines, `SD_SPI_HZ`).
 
 ## Network configuration
 
-Edit Wi-Fi and MQTT settings in `src/main.cpp`:
+Edit Wi-Fi and MQTT settings in `src/main.cpp`.
+
+### Campus Wi-Fi (CUHK1x / eduroam) — default
+
+`WIFI_USE_ENTERPRISE` is set to `1`. Fill in:
+
+```cpp
+static const char* WIFI_SSID     = "CUHK1x";  // or "eduroam"
+static const char* EAP_IDENTITY  = "1155xxxxxx@link.cuhk.edu.hk";
+static const char* EAP_USERNAME  = "1155xxxxxx@link.cuhk.edu.hk";
+static const char* EAP_PASSWORD  = "your-onepass-password";
+```
+
+- Students: `StudentID@link.cuhk.edu.hk`
+- Staff: `alias@cuhk.edu.hk`
+- Password: CUHK OnePass
+
+### Personal hotspot / home router
+
+Set `#define WIFI_USE_ENTERPRISE 0` and use:
 
 ```cpp
 static const char* WIFI_SSID     = "...";
 static const char* WIFI_PASSWORD = "...";
-static const char* MQTT_BROKER   = "172.20.10.3";  // broker IP on your LAN/hotspot
+```
+
+```cpp
+static const char* MQTT_BROKER   = "172.20.10.3";  // must be reachable on that Wi-Fi
 static const uint16_t MQTT_PORT  = 1883;
 ```
 
-The ESP32 must reach an MQTT broker (e.g. Mosquitto on your Mac while the hotspot is on).
+On campus Wi-Fi, your phone-hotspot MQTT broker IP will not work unless the broker is reachable from CUHK1x/eduroam.
 
 ## MQTT topics
 
@@ -193,6 +215,8 @@ platformio.ini
 | `Soil sensor: Modbus timeout` | 24V on Brown wire, common GND, DE+RE → GPIO 7, swap A/B |
 | `Soil sensor: CRC mismatch` | Loose RS485 wiring, wrong baud (default 4800), wrong address |
 | `MQTT publish skipped` | Wi-Fi / hotspot, broker IP, broker running |
+| `Wi-Fi: EAP_PASSWORD is empty` | Fill OnePass into `EAP_PASSWORD` in `main.cpp` |
+| Campus Wi-Fi fails | Check email identity, OnePass, SSID `CUHK1x`/`eduroam`; wait 15–30 s for PEAP |
 | `datetime: NOT_SYNCED` | Wi-Fi must be up for NTP |
 | SD init fails | 3.3V power, MISO/MOSI not swapped, FAT32, firm card seat |
 | SD errors but `recorded row` | Often marginal power — add cap on SD module |
