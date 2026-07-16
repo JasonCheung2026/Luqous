@@ -14,7 +14,7 @@ static const char* const NTP_SERVER_1 = "pool.ntp.org";
 static const char* const NTP_SERVER_2 = "time.nist.gov";
 
 static const char* const CSV_HEADER =
-    "datetime,temperature_c,humidity_pct,lux,water_raw,fill_light,"
+    "datetime,temperature_c,humidity_pct,lux,water_raw,fill_light,water_valve,"
     "soil_moisture_pct,soil_temp_c,soil_ec_us_cm";
 
 static PubSubClient* g_mqttClient = nullptr;
@@ -325,8 +325,12 @@ String csvLoggerFormatTimestamp() {
   return String(buffer);
 }
 
+String csvLoggerOnOffLabel(bool on) {
+  return on ? "ON" : "OFF";
+}
+
 String csvLoggerFillLightLabel(bool fillLightOn) {
-  return fillLightOn ? "ON" : "OFF";
+  return csvLoggerOnOffLabel(fillLightOn);
 }
 
 static String buildCsvRow(float temperatureC,
@@ -334,11 +338,12 @@ static String buildCsvRow(float temperatureC,
                           uint16_t lux,
                           uint16_t waterRaw,
                           bool fillLightOn,
+                          bool waterValveOpen,
                           float soilMoisturePct,
                           float soilTempC,
                           uint16_t soilEcUsCm) {
   String row;
-  row.reserve(128);
+  row.reserve(144);
   row += csvLoggerFormatTimestamp();
   row += ',';
   row += String(temperatureC, 2);
@@ -349,7 +354,9 @@ static String buildCsvRow(float temperatureC,
   row += ',';
   row += String(waterRaw);
   row += ',';
-  row += csvLoggerFillLightLabel(fillLightOn);
+  row += csvLoggerOnOffLabel(fillLightOn);
+  row += ',';
+  row += csvLoggerOnOffLabel(waterValveOpen);
   row += ',';
   row += String(soilMoisturePct, 1);
   row += ',';
@@ -387,11 +394,12 @@ bool csvLoggerRecordReading(float temperatureC,
                             uint16_t lux,
                             uint16_t waterRaw,
                             bool fillLightOn,
+                            bool waterValveOpen,
                             float soilMoisturePct,
                             float soilTempC,
                             uint16_t soilEcUsCm) {
   const String row = buildCsvRow(temperatureC, humidityPct, lux, waterRaw, fillLightOn,
-                                 soilMoisturePct, soilTempC, soilEcUsCm);
+                                 waterValveOpen, soilMoisturePct, soilTempC, soilEcUsCm);
 
   const bool ok = appendCsvRow(row);
   publishCsvRow(row);

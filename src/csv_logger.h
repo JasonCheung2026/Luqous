@@ -42,9 +42,11 @@ bool csvLoggerRecordReading(float temperatureC,
                             uint16_t lux,
                             uint16_t waterRaw,
                             bool fillLightOn,
+                            bool waterValveOpen,
                             float soilMoisturePct,
                             float soilTempC,
                             uint16_t soilEcUsCm);
 void csvLoggerHandleCommand(const String& command);
 
 String csvLoggerFillLightLabel(bool fillLightOn);
+String csvLoggerOnOffLabel(bool on);

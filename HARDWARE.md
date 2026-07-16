@@ -64,6 +64,26 @@ All I2C devices share one bus.
 
 ---
 
+## 4b. Water valve (relay + button)
+
+| Signal | ESP32-S3 GPIO | Notes |
+|--------|---------------|-------|
+| **Button** | **GPIO 15** | Active LOW; internal pull-up; toggles valve (manual) |
+| **Relay** | **GPIO 14** | Output: HIGH = valve OPEN, LOW = CLOSED |
+
+**Wiring:** Button one side → GPIO 15, other side → GND. Relay control → GPIO 14. Valve coil on relay NO/COM with its own supply (often 24V) — not from ESP32 GPIO.
+
+**Boot:** Valve **CLOSED**, auto mode **OFF** (safe).
+
+**Control:**
+- Button → toggles open/closed and forces **manual** mode
+- MQTT `esp32/commands`: `valve:on` / `valve:off` / `valve:auto` / `valve:manual`
+- Auto (when enabled): open if `water_raw` &lt; 800, close if `water_raw` &gt; 2500 (tune in `config.h`)
+
+**Pull-ups:** No external resistor (internal pull-up on GPIO 15 only).
+
+---
+
 ## 5. Micro SD card module (SPI)
 
 Connect by **pin label**, not header position.
@@ -141,6 +161,8 @@ GPIO 10 — SD CS (+ 10k to 3.3V)
 GPIO 11 — SD MOSI
 GPIO 12 — SD SCK
 GPIO 13 — SD MISO
+GPIO 14 — Water valve relay
+GPIO 15 — Water valve button (internal pull-up)
 GPIO 17 — UART1 TX → MAX485 DI
 GPIO 18 — UART1 RX ← MAX485 RO
 ```
@@ -156,6 +178,8 @@ GPIO 18 — UART1 RX ← MAX485 RO
 | Water level | **No** | — |
 | Fill Light button | **No** (external) | Internal pull-up on GPIO 5 |
 | Fill Light relay | **No** | Output only |
+| Water valve button | **No** (external) | Internal pull-up on GPIO 15 |
+| Water valve relay | **No** | Output only |
 | SD card **CS** | **Yes** | **10 kΩ to 3.3V** |
 | SD MISO / MOSI / SCK | **No** | — |
 | RS485 (soil sensor) | **No** | — |

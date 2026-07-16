@@ -9,6 +9,7 @@ Firmware for an ESP32-S3 DevKitC-1 that reads environmental sensors, controls a 
 - **SN-3000 soil sensor** — moisture, soil temperature, EC over RS485 Modbus
 - **Water level** — analog sensor with anti-corrosion power gating
 - **Fill Light** — pushbutton toggles a relay (logged as `ON` / `OFF`)
+- **Water valve** — relay on GPIO 14 (button / MQTT / auto from water level; boot CLOSED)
 - **OLED** — 128×64 SH1106 status display (I2C)
 - **SD card** — append-only CSV log (`sensor_log.csv`)
 - **MQTT** — JSON telemetry, live CSV rows, and full log download on command
@@ -33,6 +34,8 @@ Sensor data is collected and logged every **5 seconds**.
 | Water sensor power (active HIGH) | 4 |
 | Fill Light button (active LOW, pull-up) | 5 |
 | Fill Light relay | 6 |
+| Water valve button (active LOW, pull-up) | 15 |
+| Water valve relay | 14 |
 | RS485 DE/RE (MAX485) | 7 |
 | UART1 TX → MAX485 DI | 17 |
 | UART1 RX ← MAX485 RO | 18 |
@@ -58,7 +61,7 @@ SD settings are in `src/csv_logger.h` (`USE_SD_CARD`, pin defines, `SD_SPI_HZ`).
 
 ## Network configuration
 
-Edit Wi-Fi and MQTT settings in `src/main.cpp`.
+Edit Wi-Fi and MQTT settings in `src/config.h`.
 
 ### Campus Wi-Fi (CUHK1x / eduroam) — default
 
@@ -111,12 +114,26 @@ On campus Wi-Fi, your phone-hotspot MQTT broker IP will not work unless the brok
   "lux": 218,
   "water_raw": 0,
   "fill_light": "OFF",
+  "water_valve": "OFF",
+  "water_valve_auto": false,
   "soil_moisture_pct": 32.5,
   "soil_temp_c": 22.1,
   "soil_ec_us_cm": 850,
   "device": "ESP32S3"
 }
 ```
+
+### MQTT commands (`esp32/commands`)
+
+| Payload | Action |
+|---------|--------|
+| `valve:on` / `valve:open` | Open valve (manual) |
+| `valve:off` / `valve:close` | Close valve (manual) |
+| `valve:auto` | Enable auto fill from water level |
+| `valve:manual` | Disable auto |
+| `{"cmd":"download_log"}` | Download full CSV via MQTT |
+
+Auto thresholds (tune in `config.h`): open if `water_raw` &lt; 800, close if &gt; 2500.
 
 ### Download full log via MQTT
 
@@ -137,8 +154,8 @@ Responses on `esp32/log/download`:
 File on SD card: **`sensor_log.csv`**
 
 ```csv
-datetime,temperature_c,humidity_pct,lux,water_raw,fill_light,soil_moisture_pct,soil_temp_c,soil_ec_us_cm
-2026-06-15 15:35:29,0.00,0.00,218,0,OFF,32.5,22.1,850
+datetime,temperature_c,humidity_pct,lux,water_raw,fill_light,water_valve,soil_moisture_pct,soil_temp_c,soil_ec_us_cm
+2026-06-15 15:35:29,0.00,0.00,218,0,OFF,OFF,32.5,22.1,850
 ```
 
 If you already have an older `sensor_log.csv` on the SD card, delete it (or rename it) so a new file is created with the updated header.
@@ -196,13 +213,21 @@ CSV logger: recorded row -> 2026-06-15 15:35:29,0.00,0.00,218,0,OFF
 
 ```
 src/
-  main.cpp          # sensors, Wi-Fi, MQTT, OLED, relay
-  soil_sensor.cpp   # SN-3000 Modbus RTU over RS485
-  soil_sensor.h
-  csv_logger.cpp    # NTP, SD CSV logging, MQTT log download
-  csv_logger.h      # SD pin config
+  main.cpp            # setup() / loop() orchestrator only
+  config.h            # pins, timing, Wi-Fi / MQTT credentials
+  dht11_sensor.*      # DHT11 temperature & humidity
+  bh1750_sensor.*     # BH1750 ambient light
+  water_level.*       # water level ADC + power gating
+  fill_light.*        # Fill Light button + relay
+  water_valve.*       # water valve button + relay + auto + MQTT cmds
+  wifi_manager.*      # Wi-Fi (WPA2 / WPA2-Enterprise)
+  mqtt_manager.*      # MQTT connect, publish, command dispatch
+  oled_display.*      # SH1106 OLED UI
+  telemetry.*         # 5 s collect → MQTT JSON + CSV row
+  soil_sensor.*       # SN-3000 Modbus RTU over RS485
+  csv_logger.*        # NTP, SD CSV logging, MQTT log download
 scripts/
-  mqtt_download_csv.py   # download CSV from MQTT to Mac
+  mqtt_download_csv.py
   requirements.txt
 platformio.ini
 ```
@@ -215,9 +240,10 @@ platformio.ini
 | `Soil sensor: Modbus timeout` | 24V on Brown wire, common GND, DE+RE → GPIO 7, swap A/B |
 | `Soil sensor: CRC mismatch` | Loose RS485 wiring, wrong baud (default 4800), wrong address |
 | `MQTT publish skipped` | Wi-Fi / hotspot, broker IP, broker running |
-| `Wi-Fi: EAP_PASSWORD is empty` | Fill OnePass into `EAP_PASSWORD` in `main.cpp` |
+| `Wi-Fi: EAP_PASSWORD is empty` | Fill OnePass into `EAP_PASSWORD` in `config.h` |
 | Campus Wi-Fi fails | Check email identity, OnePass, SSID `CUHK1x`/`eduroam`; wait 15–30 s for PEAP |
 | `datetime: NOT_SYNCED` | Wi-Fi must be up for NTP |
 | SD init fails | 3.3V power, MISO/MOSI not swapped, FAT32, firm card seat |
 | SD errors but `recorded row` | Often marginal power — add cap on SD module |
 | Fill Light | Button GPIO 5 (LOW = pressed), relay GPIO 6 |
+| Water valve | Button GPIO 15, relay GPIO 14; MQTT `valve:on`/`off`/`auto` |
