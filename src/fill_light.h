@@ -5,3 +5,4 @@
 void fillLightInit();
 void fillLightMaintain();
 bool fillLightIsOn();
+bool fillLightHandleMqtt(const String& message);

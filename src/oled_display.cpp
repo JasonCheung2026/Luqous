@@ -33,6 +33,86 @@ bool oledPresent() {
   return g_present;
 }
 
+static void drawConnDot(int cx, int cy, bool ok) {
+  if (ok) {
+    g_u8g2.drawDisc(cx, cy, 2);
+  } else {
+    g_u8g2.drawCircle(cx, cy, 2);
+  }
+}
+
+// Inverted header: title left, Wi-Fi / MQTT status dots right
+static void drawHeader(bool soilPage, const DisplaySnapshot& snap) {
+  g_u8g2.setDrawColor(1);
+  g_u8g2.drawBox(0, 0, 128, 12);
+
+  g_u8g2.setDrawColor(0);
+  g_u8g2.setFont(u8g2_font_6x10_tf);
+  g_u8g2.drawStr(3, 9, soilPage ? "SOIL" : "CLIMATE");
+
+  // Page dots when soil sensor is available
+  if (soilSensorPresent()) {
+    const int baseX = 52;
+    if (soilPage) {
+      g_u8g2.drawCircle(baseX, 6, 2);
+      g_u8g2.drawDisc(baseX + 8, 6, 2);
+    } else {
+      g_u8g2.drawDisc(baseX, 6, 2);
+      g_u8g2.drawCircle(baseX + 8, 6, 2);
+    }
+  }
+
+  // Labels + filled/empty dots (Wi-Fi, MQTT)
+  g_u8g2.setFont(u8g2_font_5x8_tf);
+  g_u8g2.drawStr(78, 9, "W");
+  drawConnDot(90, 6, snap.wifiOk);
+  g_u8g2.drawStr(100, 9, "M");
+  drawConnDot(112, 6, snap.mqttOk);
+
+  g_u8g2.setDrawColor(1);
+}
+
+// Label left, value right — industrial HMI row style
+static void drawMetricRow(int y, const char* label, const char* value) {
+  g_u8g2.setFont(u8g2_font_6x10_tf);
+  g_u8g2.drawStr(2, y, label);
+  g_u8g2.drawStr(128 - 2 - g_u8g2.getStrWidth(value), y, value);
+}
+
+// ON = filled pill (inverted text), OFF = outlined pill
+static void drawStatusPill(int x, int y, int w, int h, const char* tag, bool on) {
+  g_u8g2.setFont(u8g2_font_5x8_tf);
+  char text[12];
+  snprintf(text, sizeof(text), "%s %s", tag, on ? "ON" : "OFF");
+
+  const int textW = g_u8g2.getStrWidth(text);
+  const int textX = x + (w - textW) / 2;
+  const int textY = y + h - 2;
+
+  if (on) {
+    g_u8g2.drawRBox(x, y, w, h, 2);
+    g_u8g2.setDrawColor(0);
+    g_u8g2.drawStr(textX, textY, text);
+    g_u8g2.setDrawColor(1);
+  } else {
+    g_u8g2.drawRFrame(x, y, w, h, 2);
+    g_u8g2.drawStr(textX, textY, text);
+  }
+}
+
+static void drawFooter(const DisplaySnapshot& snap) {
+  g_u8g2.drawHLine(0, 51, 128);
+
+  // Fill Light + Valve pills
+  drawStatusPill(2, 53, 42, 10, "FL", snap.fillLightOn);
+  drawStatusPill(46, 53, 42, 10, "VL", snap.valveOpen);
+
+  g_u8g2.setFont(u8g2_font_5x8_tf);
+  char water[14];
+  snprintf(water, sizeof(water), "W %u", snap.waterRaw);
+  g_u8g2.drawStr(128 - 2 - g_u8g2.getStrWidth(water), 61, water);
+}
+
 void oledUpdate(const DisplaySnapshot& snap) {
   if (!g_present) {
     return;
@@ -46,73 +126,54 @@ void oledUpdate(const DisplaySnapshot& snap) {
   }
 
   g_u8g2.clearBuffer();
+  drawHeader(showSoilPage, snap);
 
-  g_u8g2.setFont(u8g2_font_5x8_tf);
-  g_u8g2.drawStr(0, 8, showSoilPage ? "ESP32-S3 SOIL" : "ESP32-S3 NODE");
-
-  String wifiStr = snap.wifiOk ? "W:OK" : "W:--";
-  String mqttStr = snap.mqttOk ? "M:OK" : "M:--";
-  String netStr  = wifiStr + " " + mqttStr;
-
-  const int netWidth = g_u8g2.getStrWidth(netStr.c_str());
-  g_u8g2.drawStr(128 - netWidth, 8, netStr.c_str());
-  g_u8g2.drawHLine(0, 11, 128);
-
-  g_u8g2.setFont(u8g2_font_6x10_tf);
-  char buf[32];
+  char value[20];
 
   if (showSoilPage) {
     if (snap.soilValid) {
-      snprintf(buf, sizeof(buf), "Moist: %.1f %%", snap.soilMoisture);
+      snprintf(value, sizeof(value), "%.1f %%", snap.soilMoisture);
     } else {
-      snprintf(buf, sizeof(buf), "Moist: --");
+      snprintf(value, sizeof(value), "--");
     }
-    g_u8g2.drawStr(0, 24, buf);
+    drawMetricRow(24, "Moisture", value);
 
     if (snap.soilValid) {
-      snprintf(buf, sizeof(buf), "STemp: %.1f C", snap.soilTemp);
+      snprintf(value, sizeof(value), "%.1f C", snap.soilTemp);
     } else {
-      snprintf(buf, sizeof(buf), "STemp: --");
+      snprintf(value, sizeof(value), "--");
     }
-    g_u8g2.drawStr(0, 37, buf);
+    drawMetricRow(36, "Soil Temp", value);
 
     if (snap.soilValid) {
-      snprintf(buf, sizeof(buf), "EC:    %u uS/cm", snap.soilEc);
+      snprintf(value, sizeof(value), "%u uS", snap.soilEc);
     } else {
-      snprintf(buf, sizeof(buf), "EC:    --");
+      snprintf(value, sizeof(value), "--");
     }
-    g_u8g2.drawStr(0, 50, buf);
-
-    snprintf(buf, sizeof(buf), "Water:%u V:%s", snap.waterRaw, snap.valveOpen ? "ON" : "OFF");
-    g_u8g2.drawStr(0, 63, buf);
+    drawMetricRow(48, "EC", value);
   } else {
     if (snap.dht11Present && snap.climateValid) {
-      snprintf(buf, sizeof(buf), "Temp:  %.2f C", snap.temperature);
+      snprintf(value, sizeof(value), "%.1f C", snap.temperature);
     } else {
-      snprintf(buf, sizeof(buf), "Temp:  --");
+      snprintf(value, sizeof(value), "--");
     }
-    g_u8g2.drawStr(0, 24, buf);
+    drawMetricRow(24, "Temp", value);
 
     if (snap.dht11Present && snap.climateValid) {
-      snprintf(buf, sizeof(buf), "Humid: %.2f %%", snap.humidity);
+      snprintf(value, sizeof(value), "%.1f %%", snap.humidity);
     } else {
-      snprintf(buf, sizeof(buf), "Humid: --");
+      snprintf(value, sizeof(value), "--");
     }
-    g_u8g2.drawStr(0, 37, buf);
+    drawMetricRow(36, "Humidity", value);
 
     if (snap.bh1750Present) {
-      snprintf(buf, sizeof(buf), "Light: %u Lux", snap.lux);
+      snprintf(value, sizeof(value), "%u lx", snap.lux);
     } else {
-      snprintf(buf, sizeof(buf), "Light: --");
+      snprintf(value, sizeof(value), "--");
     }
-    g_u8g2.drawStr(0, 50, buf);
-
-    snprintf(buf, sizeof(buf), "Water:%u V:%s%s",
-             snap.waterRaw,
-             snap.valveOpen ? "ON" : "OFF",
-             snap.valveAuto ? "A" : "");
-    g_u8g2.drawStr(0, 63, buf);
+    drawMetricRow(48, "Light", value);
   }
 
+  drawFooter(snap);
   g_u8g2.sendBuffer();
 }

@@ -56,9 +56,9 @@ All I2C devices share one bus.
 | Signal | ESP32-S3 GPIO | Notes |
 |--------|---------------|-------|
 | **Button** | **GPIO 5** | Active LOW; internal pull-up enabled in code |
-| **Relay** | **GPIO 6** | Output: HIGH = Fill Light ON, LOW = OFF |
+| **Relay** | **GPIO 14** | Output: HIGH = Fill Light ON, LOW = OFF |
 
-**Wiring:** Button one side → GPIO 5, other side → GND. Relay control → GPIO 6.
+**Wiring:** Button one side → GPIO 5, other side → GND. Relay control → GPIO 14.
 
 **Pull-ups:** No external resistor (internal pull-up on GPIO 5 only).
 
@@ -69,16 +69,15 @@ All I2C devices share one bus.
 | Signal | ESP32-S3 GPIO | Notes |
 |--------|---------------|-------|
 | **Button** | **GPIO 15** | Active LOW; internal pull-up; toggles valve (manual) |
-| **Relay** | **GPIO 14** | Output: HIGH = valve OPEN, LOW = CLOSED |
+| **Relay** | **GPIO 6** | Output: HIGH = valve OPEN, LOW = CLOSED |
 
-**Wiring:** Button one side → GPIO 15, other side → GND. Relay control → GPIO 14. Valve coil on relay NO/COM with its own supply (often 24V) — not from ESP32 GPIO.
+**Wiring:** Button one side → GPIO 15, other side → GND. Relay control → GPIO 6. Valve coil on relay NO/COM with its own supply (often 24V) — not from ESP32 GPIO.
 
-**Boot:** Valve **CLOSED**, auto mode **OFF** (safe).
+**Boot:** Valve **CLOSED**.
 
 **Control:**
-- Button → toggles open/closed and forces **manual** mode
-- MQTT `esp32/commands`: `valve:on` / `valve:off` / `valve:auto` / `valve:manual`
-- Auto (when enabled): open if `water_raw` &lt; 800, close if `water_raw` &gt; 2500 (tune in `config.h`)
+- Button → toggles open/closed
+- MQTT `esp32/<node>/water_valve/control`: payload `1` = open, `0` = closed (node1/node2)
 
 **Pull-ups:** No external resistor (internal pull-up on GPIO 15 only).
 
@@ -153,7 +152,7 @@ GPIO 1  — Water level ADC
 GPIO 2  — DHT11 data (OUT)
 GPIO 4  — Water sensor power enable
 GPIO 5  — Fill Light button (internal pull-up)
-GPIO 6  — Fill Light relay
+GPIO 6  — Water valve relay
 GPIO 7  — RS485 DE/RE (MAX485)
 GPIO 8  — I2C SDA (OLED, BH1750)
 GPIO 9  — I2C SCL
@@ -161,7 +160,7 @@ GPIO 10 — SD CS (+ 10k to 3.3V)
 GPIO 11 — SD MOSI
 GPIO 12 — SD SCK
 GPIO 13 — SD MISO
-GPIO 14 — Water valve relay
+GPIO 14 — Fill Light relay
 GPIO 15 — Water valve button (internal pull-up)
 GPIO 17 — UART1 TX → MAX485 DI
 GPIO 18 — UART1 RX ← MAX485 RO

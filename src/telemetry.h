@@ -5,3 +5,4 @@
 void telemetryPrimeCache();
 void telemetryCollectAndPublish();
 void telemetryFillSnapshot(DisplaySnapshot* out);
+void telemetryPublishActuatorStatus();

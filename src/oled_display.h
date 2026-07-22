@@ -16,7 +16,6 @@ struct DisplaySnapshot {
   bool     bh1750Present;
   bool     fillLightOn;
   bool     valveOpen;
-  bool     valveAuto;
   bool     wifiOk;
   bool     mqttOk;
 };

@@ -12,8 +12,6 @@ from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
-TOPIC_COMMAND = "esp32/commands"
-TOPIC_DOWNLOAD = "esp32/log/download"
 DOWNLOAD_COMMAND = '{"cmd":"download_log"}'
 
 
@@ -32,14 +30,40 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--broker",
-        default="172.20.10.3",
-        help="MQTT broker IP or hostname (default: 172.20.10.3)",
+        default="15d8cf01fbae43a0a8806e281d097287.s1.eu.hivemq.cloud",
+        help="MQTT broker hostname (default: HiveMQ Cloud cluster)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=1883,
-        help="MQTT broker port (default: 1883)",
+        default=8883,
+        help="MQTT broker port (default: 8883 for HiveMQ TLS)",
+    )
+    parser.add_argument(
+        "--tls",
+        action="store_true",
+        default=True,
+        help="Use TLS (default: on for HiveMQ Cloud)",
+    )
+    parser.add_argument(
+        "--no-tls",
+        action="store_true",
+        help="Disable TLS (local Mosquitto on port 1883)",
+    )
+    parser.add_argument(
+        "--username",
+        default="Luquos",
+        help="MQTT username (HiveMQ Cloud credential)",
+    )
+    parser.add_argument(
+        "--password",
+        default="",
+        help="MQTT password (HiveMQ Cloud credential)",
+    )
+    parser.add_argument(
+        "--node",
+        default="node1",
+        help="PCB node/topic namespace (default: node1)",
     )
     parser.add_argument(
         "--output",
@@ -61,25 +85,35 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def create_client(state: DownloadState) -> mqtt.Client:
+def create_client(
+    state: DownloadState,
+    username: str,
+    password: str,
+    topic_command: str,
+    topic_download: str,
+) -> mqtt.Client:
     try:
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
     except AttributeError:
         client = mqtt.Client()
+
+    if username:
+        client.username_pw_set(username, password)
 
     def on_connect(client: mqtt.Client, userdata, flags, rc) -> None:
         if rc != 0:
             state.error = f"MQTT connect failed with code {rc}"
             return
         client.subscribe(TOPIC_DOWNLOAD)
-        client.publish(TOPIC_COMMAND, DOWNLOAD_COMMAND, qos=0)
-        print(f"Requested log download on {TOPIC_COMMAND}")
+        client.subscribe(topic_download)
+        client.publish(topic_command, DOWNLOAD_COMMAND, qos=0)
+        print(f"Requested log download on {topic_command}")
 
     def on_message(client: mqtt.Client, userdata, msg) -> None:
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
         except json.JSONDecodeError as exc:
-            state.error = f"Invalid JSON on {TOPIC_DOWNLOAD}: {exc}"
+            state.error = f"Invalid JSON on {topic_download}: {exc}"
             return
 
         status = payload.get("status")
@@ -124,10 +158,32 @@ def maybe_open_file(path: Path) -> None:
 
 def main() -> int:
     args = parse_args()
-    state = DownloadState()
-    client = create_client(state)
+    use_tls = not args.no_tls
+    if use_tls and not args.password:
+        print(
+            "Error: --password is required for HiveMQ Cloud (TLS).",
+            file=sys.stderr,
+        )
+        return 1
 
-    print(f"Connecting to mqtt://{args.broker}:{args.port} ...")
+    topic_command = f"esp32/{args.node}/commands"
+    topic_download = f"esp32/{args.node}/log/download"
+
+    state = DownloadState()
+    client = create_client(
+        state,
+        args.username,
+        args.password,
+        topic_command=topic_command,
+        topic_download=topic_download,
+    )
+
+    if use_tls:
+        client.tls_set()  # system CA store
+        print(f"Connecting to mqtts://{args.broker}:{args.port} (TLS) ...")
+    else:
+        print(f"Connecting to mqtt://{args.broker}:{args.port} ...")
+
     client.connect(args.broker, args.port, keepalive=60)
     client.loop_start()
 

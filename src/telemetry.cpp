@@ -39,9 +39,29 @@ void telemetryFillSnapshot(DisplaySnapshot* out) {
   out->bh1750Present = bh1750Present();
   out->fillLightOn   = fillLightIsOn();
   out->valveOpen     = waterValveIsOpen();
-  out->valveAuto     = waterValveAutoEnabled();
   out->wifiOk        = wifiIsConnected();
   out->mqttOk        = mqttIsConnected();
+}
+
+void telemetryPublishActuatorStatus() {
+  if (!mqttIsConnected()) {
+    return;
+  }
+
+  const char* fillLightPayload = fillLightIsOn() ? "1" : "0";
+  const char* valvePayload = waterValveIsOpen() ? "1" : "0";
+
+  const bool fillLightOk = mqttPublish(TOPIC_STATUS_FILL_LIGHT, fillLightPayload);
+  const bool valveOk = mqttPublish(TOPIC_STATUS_VALVE, valvePayload);
+
+  Serial.printf("MQTT status publish %s -> %s\n",
+                TOPIC_STATUS_FILL_LIGHT, fillLightPayload);
+  Serial.printf("MQTT status publish %s -> %s\n",
+                TOPIC_STATUS_VALVE, valvePayload);
+
+  if (!fillLightOk || !valveOk) {
+    Serial.println("MQTT status publish FAILED");
+  }
 }
 
 static void publishTelemetry(unsigned long timestampMs) {
@@ -54,7 +74,6 @@ static void publishTelemetry(unsigned long timestampMs) {
   doc["water_raw"]         = g_waterRaw;
   doc["fill_light"]        = csvLoggerFillLightLabel(fillLightIsOn());
   doc["water_valve"]       = csvLoggerOnOffLabel(waterValveIsOpen());
-  doc["water_valve_auto"]  = waterValveAutoEnabled();
   doc["soil_moisture_pct"] = g_soilMoisture;
   doc["soil_temp_c"]       = g_soilTemp;
   doc["soil_ec_us_cm"]     = g_soilEc;
@@ -88,7 +107,6 @@ void telemetryPrimeCache() {
     g_lux = bh1750ReadLux();
   }
   g_waterRaw = waterLevelReadRaw();
-  waterValveMaintainAuto(g_waterRaw);
 
   if (soilSensorPresent()) {
     SoilSensorReading soil;
@@ -130,7 +148,6 @@ void telemetryCollectAndPublish() {
   yield();
 
   g_waterRaw = waterLevelReadRaw();
-  waterValveMaintainAuto(g_waterRaw);
   yield();
 
   SoilSensorReading soil;
@@ -146,6 +163,7 @@ void telemetryCollectAndPublish() {
   yield();
 
   publishTelemetry(now);
+  telemetryPublishActuatorStatus();
 
   csvLoggerRecordReading(g_temperature, g_humidity, g_lux, g_waterRaw,
                          fillLightIsOn(), waterValveIsOpen(),

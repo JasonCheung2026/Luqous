@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <PubSubClient.h>
+#include "config.h"
 
 // Micro SD module wired to ESP32-S3 FSPI: MOSI=11, MISO=13, SCK=12, CS=10
 #ifndef USE_SD_CARD
@@ -27,8 +28,8 @@
 #endif
 
 static const char* const CSV_LOG_FILENAME     = "/sensor_log.csv";
-static const char* const MQTT_TOPIC_LOG_CSV   = "esp32/log/csv";
-static const char* const MQTT_TOPIC_LOG_DOWNLOAD = "esp32/log/download";
+static const char* const MQTT_TOPIC_LOG_CSV   = "esp32/" NODE_ID "/log/csv";
+static const char* const MQTT_TOPIC_LOG_DOWNLOAD = "esp32/" NODE_ID "/log/download";
 
 void csvLoggerInit(PubSubClient* mqttClient);
 void csvLoggerMaintainTime(bool wifiConnected);
